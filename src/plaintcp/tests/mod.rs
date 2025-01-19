@@ -8,7 +8,7 @@ use futures::{StreamExt, SinkExt};
 use tokio::{task::JoinHandle, net::TcpListener};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use crate::{Message, Acknowledgement};
+use crate::{Identifier, Message, Acknowledgement};
 
 pub fn listener<RecvMsg>(address: SocketAddr, expected: RecvMsg) -> JoinHandle<()> 
 where
@@ -32,3 +32,4 @@ where
 }
 
 pub type PeerId = usize;
+impl Identifier for PeerId {}
