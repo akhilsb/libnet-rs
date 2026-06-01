@@ -7,7 +7,9 @@ use crate::Message;
 pub struct Decodec<O> (pub LengthDelimitedCodec, std::marker::PhantomData<O>);
 impl<O> Decodec<O> {
     pub fn new() -> Self {
-        Decodec(LengthDelimitedCodec::new(),std::marker::PhantomData::<O>)
+        let mut length_codec = LengthDelimitedCodec::new();
+        length_codec.set_max_frame_length(256 * 1_024 * 1_024);
+        Decodec(length_codec,std::marker::PhantomData::<O>)
     }
 }
 
@@ -39,7 +41,9 @@ pub struct EnCodec<I> (pub LengthDelimitedCodec, std::marker::PhantomData<I>);
 
 impl<I> EnCodec<I> {
     pub fn new() -> Self {
-        EnCodec(LengthDelimitedCodec::new(),std::marker::PhantomData::<I>)
+        let mut length_codec = LengthDelimitedCodec::new();
+        length_codec.set_max_frame_length(256 * 1_024 * 1_024);
+        EnCodec(length_codec,std::marker::PhantomData::<I>)
     }
 }
 
