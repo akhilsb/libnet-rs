@@ -42,7 +42,7 @@ pub struct EnCodec<I> (pub LengthDelimitedCodec, std::marker::PhantomData<I>);
 impl<I> EnCodec<I> {
     pub fn new() -> Self {
         let mut length_codec = LengthDelimitedCodec::new();
-        length_codec.set_max_frame_length(256 * 1_024 * 1_024);
+        length_codec.set_max_frame_length(400* 1_024 * 1_024 * 1_024);
         EnCodec(length_codec,std::marker::PhantomData::<I>)
     }
 }

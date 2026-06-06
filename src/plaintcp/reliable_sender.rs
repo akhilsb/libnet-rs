@@ -284,11 +284,8 @@ where
         let mut pending_replies : VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>= VecDeque::new();
         'connection: loop {
             let (rd, wr) = stream.split();
-            let mut decodec_reader = Decodec::<RecvMsg>::new();
-            let mut encodec_writer = EnCodec::<SendMsg>::new();
-
-            decodec_reader.0.set_max_frame_length(decodec_reader.0.max_frame_length()*100);
-            encodec_writer.0.set_max_frame_length(encodec_writer.0.max_frame_length()*100);
+            let decodec_reader = Decodec::<RecvMsg>::new();
+            let encodec_writer = EnCodec::<SendMsg>::new();
             let mut reader = FramedRead::new(
                 rd, 
                 decodec_reader
