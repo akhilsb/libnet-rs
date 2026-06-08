@@ -28,9 +28,20 @@ where
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         match self.0.decode(src)? {
-            Some(in_data) => {Ok(
-                Some(Msg::from_bytes(&in_data))
-            )},
+            Some(in_data) => match Msg::try_from_bytes(&in_data) {
+                Ok(msg) => Ok(Some(msg)),
+                Err(e) => {
+                    // A malformed or adversarial frame: log it and surface an
+                    // error instead of panicking. Callers (e.g. TcpReceiver)
+                    // already handle decoder errors by closing the connection.
+                    log::warn!(
+                        "Failed to deserialize incoming message ({} bytes): {}",
+                        in_data.len(),
+                        e
+                    );
+                    Err(io::Error::new(io::ErrorKind::InvalidData, e))
+                }
+            },
             None => Ok(None),
         }
     }

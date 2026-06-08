@@ -5,19 +5,29 @@ use serde::{Serialize, de::DeserializeOwned};
 mod impl_msg;
 pub use impl_msg::*;
 
-pub trait Message: 
-    Clone + 
-    std::fmt::Debug + 
-    Send + 
-    Sync + 
-    Serialize + 
-    DeserializeOwned + 
+pub trait Message:
+    Clone +
+    std::fmt::Debug +
+    Send +
+    Sync +
+    Serialize +
+    DeserializeOwned +
     'static
 {
-    /// How to decode from bytes
-    /// Default implementation uses bincode
-    fn from_bytes(data: &[u8]) -> Self {
+    /// How to decode from bytes, returning an error on failure.
+    /// Default implementation uses bincode. Prefer this over
+    /// [`Message::from_bytes`] when decoding untrusted (e.g. network) input,
+    /// so malformed or adversarial packets can be logged and handled instead
+    /// of panicking.
+    fn try_from_bytes(data: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(data)
+    }
+
+    /// How to decode from bytes.
+    /// Default implementation uses bincode and panics on failure; only use
+    /// this for input you trust to be well-formed.
+    fn from_bytes(data: &[u8]) -> Self {
+        Self::try_from_bytes(data)
             .expect("Deserialization failed")
     }
 

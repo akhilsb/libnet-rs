@@ -78,11 +78,16 @@ where
             .unwrap_or_else(|| 
                 panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
             );
-        self.connections
+        if let Err(e) = self.connections
             .entry(recipient)
             .or_insert_with(|| Self::spawn_connection(addr))
             .send(InnerMsg { payload: data, cancel_handler: tx })
-            .expect("Failed to send");
+        {
+            // The connection task for this peer has terminated, so its channel
+            // receiver is gone. Log and move on instead of panicking; the
+            // returned cancel handler will resolve to an error for the caller.
+            log::warn!("Failed to queue message to {}: connection task is gone ({})", addr, e);
+        }
         rx
     }
 
@@ -129,11 +134,13 @@ where
             .unwrap_or_else(|| 
                 panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
             );
-        self.connections
+        if let Err(e) = self.connections
             .entry(recipient)
             .or_insert_with(|| Self::spawn_connection(addr))
             .send(InnerMsg { payload: msg, cancel_handler: tx })
-            .expect("Failed to send");
+        {
+            log::warn!("Failed to queue message to {}: connection task is gone ({})", addr, e);
+        }
         // Wait for a response
         let _ = rx.blocking_recv();
     }
@@ -156,11 +163,13 @@ where
                 .unwrap_or_else(|| 
                     panic!("Requested to send a reliable message to {:?}, but address not found", recipient)
                 );
-            self.connections
+            if let Err(e) = self.connections
                 .entry(recipient.clone())
                 .or_insert_with(|| Self::spawn_connection(addr))
                 .send(InnerMsg { payload: msg.clone(), cancel_handler: tx })
-                .expect("Failed to send");
+            {
+                log::warn!("Failed to queue message to {}: connection task is gone ({})", addr, e);
+            }
             handlers.push(rx);
         }
         for handler in handlers {

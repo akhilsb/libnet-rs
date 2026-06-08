@@ -64,9 +64,13 @@ where
     }
 
     async fn run(&self) {
-        let listener = TcpListener::bind(self.address)
-            .await
-            .expect("Failed to bind to address");
+        let listener = match TcpListener::bind(self.address).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                log::error!("Failed to bind receiver to {}: {}", self.address, e);
+                return;
+            }
+        };
 
         log::debug!("TCP Receiver is listening on {}", self.address);
         loop {
