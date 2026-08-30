@@ -107,6 +107,18 @@ impl Connection
                     waiter.reset();
 
                     let error = self.keep_alive(stream).await;
+                    // A closed channel means the TcpReliableSender that owns
+                    // this connection was dropped. The Sender half cannot come
+                    // back, so reconnecting would spin: the next keep_alive
+                    // returns ChannelClosed immediately, and waiter.reset()
+                    // above has already cleared the backoff.
+                    if let ConnectionError::ChannelClosed(_) = error {
+                        log::debug!(
+                            "Sender for {} was dropped, ending connection task",
+                            self.address
+                        );
+                        return Ok(());
+                    }
                     log::warn!("Keep alive error: {:?}", error);
                 },
                 Err(e) => {
