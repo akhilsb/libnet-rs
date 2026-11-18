@@ -287,6 +287,20 @@ where
         }
     }
 
+    /// Move the messages of the current batch (`pending_replies[batch_start..]`)
+    /// back to the front of `buffer`, in their original order.
+    fn requeue_batch(
+        pending_replies: &mut VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>,
+        batch_start: usize,
+        buffer: &mut VecDeque<(SendMsg, oneshot::Sender<RecvMsg>)>,
+    ) {
+        while pending_replies.len() > batch_start {
+            if let Some(message) = pending_replies.pop_back() {
+                buffer.push_front(message);
+            }
+        }
+    }
+
     async fn keep_alive(&mut self, mut stream: TcpStream) -> NetError {
         // This buffer keeps all messages and handlers that we have successfully transmitted but for
         // which we are still waiting to receive an ACK.
@@ -303,33 +317,49 @@ where
                 wr, 
                 encodec_writer
             );
-            // Try to send all messages of the buffer.
+            // Write all messages of the buffer, then flush once: one socket write
+            // for a burst of messages instead of one for each message.
+            let batch_start = pending_replies.len();
             while let Some((data, handler)) = self.buffer.pop_front() {
                 // Skip messages that have been cancelled.
                 if handler.is_closed() {
                     continue;
                 }
 
-                // Try to send the message.
-                match writer.send(data.clone()).await {
+                // Try to queue the message in the writer.
+                match writer.feed(data.clone()).await {
                     Ok(()) => {
-                        // The message has been sent, we remove it from the buffer and add it to
-                        // `pending_replies` while we wait for an ACK.
-                        log::debug!("Message sent to {}", self.address);
+                        // The message is queued; it moves to `pending_replies`
+                        // while we wait for an ACK.
                         pending_replies.push_back((data, handler));
                     }
                     Err(e) => {
-                        // We failed to send the message, we put it back into the buffer.
+                        // We failed to queue the message: put it back, and the
+                        // rest of the batch, which may not have reached the socket.
                         self.buffer.push_front((data, handler));
+                        Self::requeue_batch(&mut pending_replies, batch_start, &mut self.buffer);
                         break 'connection NetError::SendingFailed(self.address, e);
                     }
                 }
             }
+            if pending_replies.len() > batch_start {
+                if let Err(e) = writer.flush().await {
+                    // It is not known which messages of this batch reached the
+                    // socket: put the whole batch back, in order, to send it again.
+                    Self::requeue_batch(&mut pending_replies, batch_start, &mut self.buffer);
+                    break 'connection NetError::SendingFailed(self.address, e);
+                }
+                log::debug!("{} message(s) sent to {}", pending_replies.len() - batch_start, self.address);
+            }
             // Check if there are any new messages to send or if we get an ACK for messages we already sent.
             tokio::select! {
                 Some(InnerMsg{payload: data, cancel_handler}) = self.receiver.recv() => {
-                    // Add the message to the buffer of messages to send.
+                    // Add the message, and every other message already queued, to
+                    // the buffer of messages to send, so that they go in one write.
                     self.buffer.push_back((data, cancel_handler));
+                    while let Ok(InnerMsg{payload: data, cancel_handler}) = self.receiver.try_recv() {
+                        self.buffer.push_back((data, cancel_handler));
+                    }
                 },
                 response = reader.next() => {
                     let (data, handler) = match pending_replies.pop_front() {
